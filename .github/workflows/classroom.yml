@@ -17,13 +17,25 @@ permissions:
   contents: read
   checks: write
 
+# Sérialise les runs de notation d'une même ref. Sans ça, plusieurs pushes/merges
+# rapprochés (ex. fusionner 6 PR en < 2 min) lancent des runs concurrents qui se
+# marchent dessus sur le cache des rapports Surefire (read-modify-write) : chaque
+# run restaure l'instantané le plus récent AU MOMENT de son démarrage, puis le
+# réécrit À LA FIN. Comme les runs se chevauchent, le « dernier qui écrit »
+# republie un instantané périmé où les rapports d'exercices traités en parallèle
+# manquent ou sont restés `skipped` -> ces exercices sont notés 0 à tort.
+# En sérialisant, chaque run restaure le cache COMPLET du run précédent.
+concurrency:
+  group: autograding-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Autograding
     if: github.repository != 'IUTInfoAix-R202/template-tp-javafx'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # Historique complet pour que `git diff $BEFORE..HEAD` fonctionne
           # dans le step de scope (sans ça, on tomberait sur ALL à chaque push).
@@ -51,7 +63,7 @@ jobs:
 
       - name: Restaurer le cache des rapports Surefire
         id: surefire_cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: target/surefire-reports
           key: surefire-${{ github.ref_name }}-${{ github.sha }}
@@ -770,7 +782,7 @@ jobs:
 
       - name: Sauvegarder le cache des rapports Surefire
         if: always()
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: target/surefire-reports
           key: surefire-${{ github.ref_name }}-${{ github.sha }}
